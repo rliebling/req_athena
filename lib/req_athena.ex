@@ -12,6 +12,7 @@ defmodule ReqAthena do
   @allowed_options ~w(
     access_key_id
     secret_access_key
+    session_token
     region
     database
     athena
@@ -36,6 +37,10 @@ defmodule ReqAthena do
     * `:athena` - Required. The query to execute. It can be a plain sql string or
       a `{query, params}` tuple, where `query` can contain `?` placeholders and `params`
       is a list of corresponding values.
+
+    * `:session_token` - Optional. The session token, used for when the
+      access_key_id and secret_access_key are not permanent, but issued through
+      AWS STS
 
   If you want to set any of these options when attaching the plugin, pass them as the second argument.
 
@@ -274,6 +279,12 @@ defmodule ReqAthena do
     end)
   end
 
+  defp maybe_add_security_token(headers, %{session_token: token}) when is_binary(token) do
+    [{"X-Amz-Security-Token", token} | headers]
+  end
+  defp maybe_add_security_token(headers, _), do: headers
+
+
   # TODO: Add step `put_aws_sigv4` to Req
   # See: https://github.com/wojtekmach/req/issues/62
   defp sign_request(%{url: uri, options: options} = request, action) do
@@ -283,7 +294,8 @@ defmodule ReqAthena do
       {"X-Amz-Target", "AmazonAthena.#{action}"},
       {"Host", uri.host},
       {"Content-Type", "application/x-amz-json-1.1"}
-    ]
+    ] |> maybe_add_security_token(options)
+
 
     headers =
       :aws_signature.sign_v4(
